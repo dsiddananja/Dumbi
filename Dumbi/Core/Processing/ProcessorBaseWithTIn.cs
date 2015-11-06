@@ -6,45 +6,48 @@
     /// <summary>
     /// Delegate that handles completion of processing
     /// </summary>
+    /// <typeparam name="TOut"></typeparam>
     /// <param name="sender"></param>
     /// <param name="e"></param>
-    public delegate void ProcessingCompleteEventHandler(object sender, ProcessingCompleteEventArgs e);
+    public delegate void ProcessingCompleteEventHandler<TOut>(object sender, ProcessingCompleteEventArgs<TOut> e);
 
     /// <summary>
-    /// Processor base
+    /// Base Processor that can be extended to create custom processor
     /// </summary>
-    public abstract class ProcessorBase : IProcessorBase, IDisposable
+    /// <typeparam name="TOut"></typeparam>
+    public abstract class ProcessorBase<TOut> : IProcessorBase<TOut>, IDisposable
     {
         /// <summary>
         /// The background worker
         /// </summary>
-        protected readonly BackgroundWorker worker = new BackgroundWorker();
+        private readonly BackgroundWorker worker = new BackgroundWorker();
 
         /// <summary>
-        /// Indicate whether this instance is disposed or not
+        /// Indicate whetehr this instance is disposed or not
         /// </summary>
         private bool disposed;
 
         /// <summary>
         /// Handler for receiving notification when the processing is complete
         /// </summary>
-        public event ProcessingCompleteEventHandler Complete;
+        public event ProcessingCompleteEventHandler<TOut> Complete;
 
         /// <summary>
         /// Initializes this instance
         /// </summary>
         public ProcessorBase()
         {
-            this.worker.DoWork += this.WorkerSetup;
-            this.worker.RunWorkerCompleted += this.WorkerRunComplete;
+            worker.DoWork += this.WorkerSetup;
+            worker.RunWorkerCompleted += this.WorkerRunComplete;
         }
 
         /// <summary>
         /// Processes in a synchronous manner
         /// </summary>
-        public void Process()
+        /// <returns></returns>
+        public TOut Process()
         {
-            this.OnProcess();
+            return this.OnProcess();
         }
 
         /// <summary>
@@ -52,7 +55,7 @@
         /// </summary>
         public void ProcessAsync()
         {
-            this.worker.RunWorkerAsync();
+            worker.RunWorkerAsync();
         }
 
         /// <summary>
@@ -77,25 +80,8 @@
         /// <summary>
         /// Custom method that contains the processing logic
         /// </summary>
-        protected abstract void OnProcess();
-
-        /// <summary>
-        /// Method that notifies the subscribers when the processing is complete
-        /// </summary>
-        /// <param name="sender">The sender</param>
-        /// <param name="e">The process complete event args</param>
-        protected void OnProcessComplete(object sender, ProcessingCompleteEventArgs e)
-        {
-            if (!e.Cancelled)
-            {
-                var handlers = this.Complete;
-
-                if (handlers != null)
-                {
-                    handlers(this, e);
-                }
-            }
-        }
+        /// <returns>Output result after processing</returns>
+        protected abstract TOut OnProcess();
 
         /// <summary>
         /// Disposes this instance
@@ -126,19 +112,33 @@
 
         #region private members
 
-        /// <summary>
-        /// The setup method that wiresup the delegate to the backgroundworker
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="args"></param>
         private void WorkerSetup(object sender, DoWorkEventArgs args)
         {
-            this.OnProcess();
+            TOut result = this.OnProcess();
+            args.Result = result;
         }
 
         private void WorkerRunComplete(object sender, RunWorkerCompletedEventArgs args)
         {
-            this.OnProcessComplete(sender, new ProcessingCompleteEventArgs(args.Error, args.Cancelled));
+            this.OnProcessComplete(sender, new ProcessingCompleteEventArgs<TOut>(args.Result, args.Error, args.Cancelled));
+        }
+
+        /// <summary>
+        /// Method that notifies the subscribers when the processing is complete
+        /// </summary>
+        /// <param name="sender">The sender</param>
+        /// <param name="e">The process complete event args</param>
+        private void OnProcessComplete(object sender, ProcessingCompleteEventArgs<TOut> e)
+        {
+            if (!e.Cancelled)
+            {
+                var handlers = this.Complete;
+
+                if (handlers != null)
+                {
+                    handlers(this, e);
+                }
+            }
         }
 
         #endregion
